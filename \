@@ -24,30 +24,11 @@ fn characters_to_texts(char_tokens: Vec<Token>) -> Vec<Token> {
     
     let mut current_text: Vec<Token> = Vec::new();
     for i in 0..char_tokens.len() {
-        let ch = char_tokens.get(i).unwrap().clone();
+        let ch = text_tokens.get(i).unwrap().clone();
         let should_push = current_text.is_empty() || ch.end - 1 == current_text.last().unwrap().end; 
         if should_push {
             current_text.push(ch);
         } else {
-
-            // let combined_chars: String = current_text.into_iter().reduce(|agg, cur| format!("{}{}", agg.value, cur.value)).unwrap();
-            let combined_chars: String = current_text.clone().into_iter()
-                .map(|x| x.value)
-                .reduce(|a, b| {
-                    format!("{}{}",a,b)
-                })
-                .unwrap()
-                .to_string();
-            text_tokens.append(&mut vec![Token {
-                token_type: TokenType::Text,
-                value: combined_chars,
-                start: current_text.clone()
-                    .into_iter()
-                    .next()
-                    .unwrap()
-                    .start,
-                end: ch.clone().end,
-            }]);
             current_text = vec![ch];
         }
     }
@@ -142,7 +123,7 @@ fn lexer(raw: String) -> Vec<Token> {
         char_tokens.push(Token { token_type: TokenType::Character, value: "*".to_string(), start: current.clone(), end: current.clone() })
     });
     let text_tokens = characters_to_texts(char_tokens);
-    [tokens.as_slice(), text_tokens.as_slice()].concat()
+    tokens
 }
 
 fn parser(tokens: Vec<Token>) {
@@ -154,6 +135,6 @@ fn parser(tokens: Vec<Token>) {
 fn main() {
     let test_raw = "#foo bar bajdasd **i am bold** *I am italic* and ***I am bold and italic***".to_string();
     let tokens = lexer(test_raw);
-    // tokens.iter().for_each(|t| println!("{}", t.value ));
+    tokens.iter().for_each(|t| println!("{}", t.value ));
 }
 
