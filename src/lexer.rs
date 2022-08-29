@@ -1,5 +1,5 @@
-#[derive(Clone)]
-enum TokenType {
+#[derive(Clone, PartialEq, Debug)]
+pub enum TokenType {
     WhiteSpace,
     NewLine,
     H1,
@@ -11,34 +11,57 @@ enum TokenType {
     Text, // String of consecutive Characters 
 }
 
-#[derive(Clone)]
-struct Token {
+#[derive(Clone, Debug)]
+pub struct Token {
     token_type: TokenType,
     value: String,
     start: u32, // might be able to get rid of these but don't want to yet
     end: u32,
 }
 
-fn characters_to_texts<'a>(char_tokens: Vec<Token>) -> &'a mut Vec<Token> {
+pub fn characters_to_texts(char_tokens: Vec<Token>) -> Vec<Token> {
     let mut text_tokens: Vec<Token> = Vec::new();
     
     let mut current_text: Vec<Token> = Vec::new();
     for i in 0..char_tokens.len() {
-        let ch = text_tokens.get(i).unwrap().clone();
-        let should_push = current_text.is_empty() || ch.end - 1 == current_text.last().unwrap().end; 
+        let ch = char_tokens.get(i).unwrap().clone();
+        let is_last = i == char_tokens.len() - 1;
+        let should_push = (current_text.is_empty() || ch.end - 1 == current_text.last().unwrap().end) && !is_last; 
         if should_push {
             current_text.push(ch);
         } else {
-            text_tokens.append(&mut current_text);
+            // if is last, we need to both add and combine chars
+            if is_last {
+                current_text.push(ch.clone());
+            }
+            // let combined_chars: String = current_text.into_iter().reduce(|agg, cur| format!("{}{}", agg.value, cur.value)).unwrap();
+            let combined_chars: String = current_text.clone().into_iter()
+                .map(|x| x.value)
+                .reduce(|a, b| {
+                    format!("{}{}",a,b)
+                })
+                .unwrap()
+                .to_string();
+            text_tokens.append(&mut vec![Token {
+                token_type: TokenType::Text,
+                value: combined_chars,
+                start: current_text.clone()
+                    .into_iter()
+                    .next()
+                    .unwrap()
+                    .start,
+                end: ch.clone().end,
+            }]);
             current_text = vec![ch];
         }
     }
     println!("Found {} unique texts", text_tokens.len());
-    mut text_tokens
+    text_tokens
 }
 
-fn lexer(raw: String) -> Vec<Token> {
-    let chars: Vec::<&str> = raw.split("").collect();
+pub fn start(raw: String) -> Vec<Token> {
+    let chars: Vec::<char> = raw.chars().collect();
+    println!("chars {:?}", chars);
     let mut tokens: Vec<Token> = Vec::new();
     let mut char_tokens: Vec<Token> = Vec::new();
     let mut skip_next = false;
@@ -51,35 +74,37 @@ fn lexer(raw: String) -> Vec<Token> {
         }
 
         let c = chars.get(i).unwrap();
+        println!("{}, {}", c, i);
         // this casting is probably bad
         let index: u32 = i as u32;
         // check for whitespace
-        if c == &" " {
+        if c == &' ' {
             tokens.push(Token { token_type: TokenType::WhiteSpace, value: " ".to_string(), start: index, end: index + 1});
             continue;
         }
-        if c == &"\n" {
+        if c == &'\n' {
             tokens.push(Token { token_type: TokenType::NewLine, value: "\n".to_string(), start: index, end: index + 1 });
         }
         // must handle lookahead
-        if c == &"#" && i == 0 {
-            let second_space = chars.get(i + 1).unwrap_or(&"");
-            let third_space = chars.get(i + 2).unwrap_or(&"");
+        if c == &'#' && i == 0 {
+            let second_space = chars.get(i + 1).unwrap_or(&' ');
+            let third_space = chars.get(i + 2).unwrap_or(&' ');
             match (second_space, third_space) {
-                (&"#", &"#") => tokens.push(Token { token_type: TokenType::H3, value: "h3".to_string(), start: index, end: index }),
-                (&"#", _) => tokens.push(Token { token_type: TokenType::H2, value: "h2".to_string(), start: index, end: index }),
+                (&'#', &'#') => tokens.push(Token { token_type: TokenType::H3, value: "h3".to_string(), start: index, end: index }),
+                (&'#', _) => tokens.push(Token { token_type: TokenType::H2, value: "h2".to_string(), start: index, end: index }),
                 _ => tokens.push(Token { token_type: TokenType::H1, value: "h1".to_string(), start: index, end: index })
             }
+            println!("Pushing!");
             continue;
         }
         // handle Bold and italic with lookahead
-        if c == &"*" {
+        if c == &'*' {
             // must make sure we don't count the same string twice.
             // ***foo*** is corner case where is both bold and italic
             let space_ahead = chars.get(i + 1);
             match space_ahead {
                 // BOLD CASE
-                Some(s) if s == &"*" => {
+                Some(s) if s == &'*' => {
                     // possibly start of bold token? 
                     if !bold_stack.is_empty() {
                         tokens.push(Token { token_type: TokenType::Bold, value: "**".to_string(), start: index, end: index });     
@@ -124,19 +149,30 @@ fn lexer(raw: String) -> Vec<Token> {
         char_tokens.push(Token { token_type: TokenType::Character, value: "*".to_string(), start: current.clone(), end: current.clone() })
     });
     let text_tokens = characters_to_texts(char_tokens);
-    tokens.append(&mut text_tokens);
-    tokens
-}
-
-fn parser(tokens: Vec<Token>) {
-    // form words from characters between symbols
-    // structure this in ast hierarcy
+    [tokens.as_slice(), text_tokens.as_slice()].concat()
 }
 
 
-fn main() {
-    let test_raw = "#foo bar bajdasd **i am bold** *I am italic* and ***I am bold and italic***".to_string();
-    let tokens = lexer(test_raw);
-    tokens.iter().for_each(|t| println!("{}", t.value ));
-}
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
 
+    #[test]
+    fn test_simple_heading() {
+        let input = String::from("# test test test").trim().to_string();
+        let result = start(input);
+        println!("Lenght: {}", result.len());
+        println!("{:?}", result);
+        assert_eq!(result.get(0).unwrap().token_type, TokenType::H1);
+        assert_eq!(result.get(1).unwrap().token_type, TokenType::WhiteSpace);
+
+        let text_tokens: Vec<Token> = result.clone().into_iter().filter(|x| x.token_type == TokenType::Text).collect();
+        assert_eq!(text_tokens.len(), 3);
+
+        let space_tokens: Vec<Token> = result.clone().into_iter().filter(|x| x.token_type == TokenType::WhiteSpace).collect();
+        assert_eq!(space_tokens.len(), 3);
+        // this passes?
+        //assert_eq!(result.get(4).unwrap().token_type, tokentype::text);
+    }
+}
